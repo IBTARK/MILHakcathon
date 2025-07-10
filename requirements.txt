@@ -6,3 +6,4 @@ matplotlib==3.10.3
 langchain==0.3.26
 langchain-community==0.3.26
 chainlit
+trustcall==0.0.39

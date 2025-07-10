@@ -10,7 +10,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 import tutor_agent.tutor_agent_prompts as prompts
 
 
-class Tutor:
+class TutorAgent:
 
     SYSTEM_PROMPT_TUTOR_AGENT = prompts.SYSTEM_PROMPT_TUTOR_AGENT
 
