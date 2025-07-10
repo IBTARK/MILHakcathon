@@ -1,51 +1,74 @@
-import os
 from dotenv import load_dotenv
-from typing import TypedDict, List
-import asyncio
 
 from langchain_openai import ChatOpenAI
-from langgraph.graph import StateGraph, START, END
+from langchain_core.messages import AnyMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import MessagesState
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from langgraph.store.memory import InMemoryStore
-from trustcall import create_extractor
+from langgraph.prebuilt import ToolNode
+from langgraph.graph import START, StateGraph
+from langgraph.prebuilt import tools_condition
 
-from memory_agent.memory_agent import MemoryAgent
+from langchain_openai import AzureChatOpenAI
+
+from tutor_agent.tools import RAGRetrieveChunks
 
 load_dotenv()
 
-agent = MemoryAgent()
+rag_tool = RAGRetrieveChunks()
 
-config = {"configurable": {"thread_id": "1", "user_id": "1"}}
+def assistant(state: MessagesState):
+    return {
+        "messages": [chat_with_tools.invoke([system_msg] + state["messages"])],
+    }
 
-# User input 
-input_messages = [HumanMessage(content="Hi, my name is Lance")]
+endpoint = "https://hackaton-scv-openai.openai.azure.com/"
+model_name = "gpt-4.1-mini"
+deployment_name = "gpt-4.1-mini-team6"
 
-print("First\n")
+api_key = "DpxSOMdIYmTXQRFQ1f7VOoLd2fp4nSE3QAhgEw5fvO8KH9WUbKNEJQQJ99BGACfhMk5XJ3w3AAABACOGk5CC"
+api_version = "2024-12-01-preview"
 
-state = asyncio.run(agent.graph.ainvoke({"messages": input_messages}, config))
-state["messages"][-1].pretty_print()
+llm = AzureChatOpenAI(
+    azure_endpoint   = endpoint,
+    azure_deployment = deployment_name,
+    api_version      = api_version,
+    api_key          = api_key,
+    model_name       = "gpt-4.1-mini",
+    temperature      = 0.3,
+)
 
+chat_with_tools = llm.bind_tools([rag_tool], parallel_tool_calls=False)
 
-print("Second\n")
+query = "¿Qué prefijo de red debe anunciar el encaminador vm_3router?"
+msg = HumanMessage(content = query)
 
-# User input 
-input_messages = [HumanMessage(content="I like to bike around San Francisco")]
+system_msg = SystemMessage(
+    content=(
+        "You are an assistant with access to a retrieval tool called "
+        "'rag_retrieve_chunks'. "
+        "If the user asks something that might be answered from the "
+        "uploaded documents, CALL the tool with the user's question."
+    )
+)
 
-# Run the graph
-state = asyncio.run(agent.graph.ainvoke({"messages": input_messages}, config))
-state["messages"][-1].pretty_print()
+builder = StateGraph(MessagesState)
 
+# Define nodes: these do the work
+builder.add_node("assistant", assistant)
+builder.add_node("tools", ToolNode([rag_tool]))
 
+# Define edges: these determine how the control flow moves
+builder.add_edge(START, "assistant")
+builder.add_conditional_edges(
+    "assistant",
+    # If the latest message requires a tool, route to tools
+    # Otherwise, provide a direct response
+    tools_condition,
+)
+builder.add_edge("tools", "assistant")
+alfred = builder.compile()
 
-# Namespace for the memory to save
-user_id = "1"
-namespace = ("memory", user_id)
-existing_memory = agent.in_memory_store.get(namespace, "user_memory")
-existing_memory.dict()
+messages = [HumanMessage(content=query)]
+response = alfred.invoke({"messages": messages})
 
-
-print(existing_memory.value)
-
-
+for m in response["messages"]:
+    m.pretty_print()

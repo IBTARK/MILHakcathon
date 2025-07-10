@@ -1,8 +1,9 @@
 import os
+import uuid
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-import datetime
+from datetime import datetime
 
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
@@ -41,8 +42,13 @@ class MemoryAgent:
 
 
     def __init__(
-        self
+        self,
+        checkpointer: MemorySaver,
+        across_thread_memory: InMemoryStore
     ):
+        self.checkpointer = checkpointer
+        self.across_thread_memory = across_thread_memory
+
         # Define the model to be used
         self.llm = ChatOpenAI(model = "gpt-4o-mini", api_key = os.getenv("OPENAI_API_KEY"), temperature = 0)
 
@@ -59,10 +65,14 @@ class MemoryAgent:
         self.graph = self.build_graph()
 
     # Nodes
-    async def update_profile(self, state: MessagesState, config: RunnableConfig, store: BaseStore):
+    def update_profile(self, state: MessagesState, config: RunnableConfig, store: BaseStore):
         """Reflect on the chat history and update the memory collection"""
 
         user_id = config["configurable"]["user_id"]
+
+        print(f"User id: {user_id}")
+
+        print(f"store {store}")
 
         # Define the namespace fot the memories
         namespace = ("profile", user_id)
@@ -71,7 +81,7 @@ class MemoryAgent:
         existing_items = store.search(namespace)
 
         # Format the existing memories for the Trustcall extractor
-        tool_name = "Profile"
+        tool_name = UserProfile.__name__ 
         existing_memories = ([(existing_item.key, tool_name, existing_item.value)
                                 for existing_item in existing_items]
                                 if existing_items
@@ -79,6 +89,27 @@ class MemoryAgent:
         
         # Merge the chat history and the instruction
         trustcall_instruction = self.TRUSTCALL_INSTRUCTION.format(time = datetime.now().isoformat())
+        updated_messages = list(merge_message_runs(messages = [SystemMessage(content = trustcall_instruction)] + state["messages"]))
+
+        for memory in self.across_thread_memory.search(("profile", user_id)):
+            print(memory.value)
+
+        # Invoke the extractor
+        result = self.extractor.invoke({"messages": updated_messages, 
+                                         "existing": existing_memories})
+        
+        # Save the memories from Trustcall to the store
+        for r, rmeta in zip(result["responses"], result["response_metadata"]):
+            store.put(namespace,
+                    rmeta.get("json_doc_id", str(uuid.uuid4())),
+                    r.model_dump(mode = "json"),
+                )
+            
+        for memory in self.across_thread_memory.search(("profile", user_id)):
+            print(memory.value)
+        
+        return {}
+
 
     def build_graph(
         self
@@ -86,18 +117,13 @@ class MemoryAgent:
         builder = StateGraph(MessagesState)
 
         # Nodes
-        builder.add_node("call_model", self.call_model)
-        builder.add_node("write_memory", self.write_memory)
+        builder.add_node("update_profile", self.update_profile)
 
         # Edges
-        builder.add_edge(START, "call_model")
-        builder.add_edge("call_model", "write_memory")
-        builder.add_edge("write_memory", END)
-
-        checkpointer = MemorySaver()
-        self.in_memory_store = InMemoryStore()
+        builder.add_edge(START, "update_profile")
+        builder.add_edge("update_profile", END)
 
         return builder.compile(
-            checkpointer = checkpointer,
-            store = self.in_memory_store
+            checkpointer = self.checkpointer,
+            store = self.across_thread_memory
         )

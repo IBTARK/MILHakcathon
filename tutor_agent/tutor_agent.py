@@ -5,8 +5,13 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph import MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.runnables.config import RunnableConfig
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
 
 
+
+from memory_agent.memory_agent import MemoryAgent
 import tutor_agent.tutor_agent_prompts as prompts
 
 
@@ -21,6 +26,13 @@ class TutorAgent:
         # Define the model to be used
         self.llm = ChatOpenAI(model = "gpt-4o-mini", api_key = os.getenv("OPENAI_API_KEY"))
 
+        # Checkpointers and memory store
+        self.checkpointer = MemorySaver()
+        self.across_thread_memory = InMemoryStore()
+
+        # Define the memory agent
+        self.memory_agent = MemoryAgent(self.checkpointer, self.across_thread_memory)
+
         self.graph = self.build_graph()
 
     # Nodes
@@ -32,15 +44,15 @@ class TutorAgent:
 
     async def assistant(
         self,
-        state: MessagesState
+        state: MessagesState,
+        config: RunnableConfig, 
+        store: BaseStore
     ):
         system_message = SystemMessage(self.SYSTEM_PROMPT_TUTOR_AGENT)
 
-        print(f"system_message: {system_message}")
+        user_id = config["configurable"]["user_id"]
 
         response = await self.llm.ainvoke([system_message] + state["messages"])
-
-        print(f"response: {response}")
 
         return {"messages": [response]}
 
@@ -51,17 +63,17 @@ class TutorAgent:
 
         # Nodes
         builder.add_node("empty_node", self.empty_node)
+        builder.add_node("memory_agent", self.memory_agent.graph)
         builder.add_node("assistant", self.assistant)
 
         # Edges
-        builder.add_edge(START, "empty_node")
-        builder.add_edge("empty_node", "assistant")
-        builder.add_edge("assistant", "assistant")
-
-        checkpointer = MemorySaver()
+        builder.add_edge(START, "memory_agent")
+        builder.add_edge("memory_agent", "assistant")
+        builder.add_edge("assistant", "memory_agent")
 
         return builder.compile(
-            checkpointer = checkpointer,
+            checkpointer = self.checkpointer,
+            store = self.across_thread_memory,
             interrupt_after = ["assistant"]
         )
 
