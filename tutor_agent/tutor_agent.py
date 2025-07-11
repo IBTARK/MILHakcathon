@@ -1,6 +1,6 @@
 import os
 from pydantic import BaseModel
-from typing import Any, Literal, Union
+from typing import Any, Literal, Union, List
 
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
@@ -26,6 +26,7 @@ class TutorState(MessagesState):
     query: str = ""
     next: str = ""
     is_solved: bool = False
+    socratic_conversation: List[str]
 
 class TutorAgent:
 
@@ -63,7 +64,7 @@ class TutorAgent:
         self,
         state: TutorState
     ):
-        return {"is_solved": False, "attempts": 0, "max_attempts": 3, "query": state["messages"][-1]}
+        return {"is_solved": False, "attempts": 0, "max_attempts": 3, "query": state["messages"][-1], "socratic_conversation": list(state["messages"][-1])}
 
     def router(
         self,
@@ -105,7 +106,7 @@ class TutorAgent:
 
         response = await self.llm_with_tools.ainvoke([system_message])
 
-        return {"messages": [response]}
+        return {"messages": [response], "socratic_conversation": state["socratic_conversation"] + [response]}
     
     async def evaluate_answer(
         self,
@@ -127,9 +128,9 @@ class TutorAgent:
         response = await self.llm_with_tools.ainvoke([system_message])
 
         if response.content.lower() == "yes":
-            return {"is_solved": True}
+            return {"is_solved": True, "socratic_conversation": state["socratic_conversation"] + [response]}
         else:
-            return {"is_solved": False}
+            return {"is_solved": False, "socratic_conversation": state["socratic_conversation"] + [response]}
         
     async def final_answer(
         self,
@@ -155,7 +156,7 @@ class TutorAgent:
 
         print(response)
 
-        return {"messages": [response], "attempts": 0, "next": "", "is_solved": False}
+        return {"messages": [response], "attempts": 0, "next": "", "is_solved": False, "socratic_conversation": state["socratic_conversation"] + [response]}
     
     async def congratulate(
         self,
@@ -177,7 +178,7 @@ class TutorAgent:
 
         response = await self.llm_with_tools.ainvoke([system_message])
 
-        return {"messages": [response], "attempts": 0, "next": "", "is_solved": False}
+        return {"messages": [response], "attempts": 0, "next": "", "is_solved": False, "socratic_conversation": state["socratic_conversation"] + [response]}
     
     # Edges
     def determine_action(
@@ -189,6 +190,7 @@ class TutorAgent:
         return next
     
     def empty_node(self, state: TutorState):
+        print(f"conversation {state['socratic_conversation']}")
         return None
 
     def socratic_tools_condition(
