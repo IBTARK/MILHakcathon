@@ -54,6 +54,8 @@ class RAGRetrieveChunks(BaseTool):
             back to the LLM.
         """
         docs: List[Document] = self._vectordb.similarity_search(query, k = TOP_K)
-        return [
+
+        result = [
             {"content": d.page_content, "metadata": d.metadata} for d in docs
         ]
+        return result
