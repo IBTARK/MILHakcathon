@@ -1,4 +1,4 @@
-import os
+import os, requests
 from pydantic import BaseModel
 from typing import Any, Literal, Union, List
 
@@ -34,6 +34,7 @@ class TutorAgent:
     SYSTEM_PROMPT_ANSWER_EVALUATOR = prompts.SYSTEM_PROMPT_ANSWER_EVALUATOR
     SYSTEM_PROMPT_FINAL_ANSWER = prompts.SYSTEM_PROMPT_FINAL_ANSWER
     SYSTEM_PROMPT_CONGRATULATE = prompts.SYSTEM_PROMPT_CONGRATULATE
+    STUDENT_CHECK_SYSTEM_PROMPT = prompts.STUDENT_CHECK_SYSTEM_PROMPT
 
     def __init__(
         self
@@ -64,7 +65,7 @@ class TutorAgent:
         self,
         state: TutorState
     ):
-        return {"is_solved": False, "attempts": 0, "max_attempts": 3, "query": state["messages"][-1], "socratic_conversation": list(state["messages"][-1])}
+        return {"is_solved": False, "attempts": 0, "max_attempts": 3, "query": state["messages"][-1], "socratic_conversation": [state["messages"][-1]]}
 
     def router(
         self,
@@ -180,6 +181,34 @@ class TutorAgent:
 
         return {"messages": [response], "attempts": 0, "next": "", "is_solved": False, "socratic_conversation": state["socratic_conversation"] + [response]}
     
+    async def student_check(
+        self,
+        state: TutorState,
+        config: RunnableConfig, 
+        store: BaseStore
+    ):
+
+        user_id = config["configurable"]["user_id"]
+        profile_txt = "\n".join(f"{memory}" for memory in self.across_thread_memory.search(("profile", user_id)))
+
+        query = state["query"]
+        attempts = state["attempts"]
+        max_attempts = state["max_attempts"]
+        socratic_interaction = state["socratic_conversation"]
+
+        history = "\n".join(f"role: {msg.type} content: {msg.content}" for msg in socratic_interaction)
+        
+        TOKEN   = os.getenv("TG_BOT_TOKEN")
+        CHAT_ID = os.getenv("TG_CHAT_ID")
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+
+        system_prompt = SystemMessage(content = self.STUDENT_CHECK_SYSTEM_PROMPT.format(user_profile = profile_txt, attempts = attempts, max_attempts = max_attempts, history = history))
+        result = await self.llm.ainvoke([system_prompt])
+
+        requests.post(url, data={"chat_id": CHAT_ID, "text": result.content}, timeout=5)
+
+        return None
+    
     # Edges
     def determine_action(
         self, 
@@ -188,10 +217,6 @@ class TutorAgent:
         next = state["next"]
 
         return next
-    
-    def empty_node(self, state: TutorState):
-        print(f"conversation {state['socratic_conversation']}")
-        return None
 
     def socratic_tools_condition(
         self,
@@ -218,7 +243,7 @@ class TutorAgent:
         self,
         state: Union[list[AnyMessage], dict[str, Any], BaseModel],
         messages_key: str = "messages",
-    ) -> Literal["final_answer_tools", "empty_node"]:
+    ) -> Literal["final_answer_tools", "student_check"]:
         """Use in the conditional_edge to route to the ToolNode if the last message
 
         has tool calls. Otherwise, route to the empty node.
@@ -233,7 +258,7 @@ class TutorAgent:
             raise ValueError(f"No messages found in input state to tool_edge: {state}")
         if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
             return "final_answer_tools"
-        return "empty_node"
+        return "student_check"
     
     def evaluate_answer_tools_condition(
         self,
@@ -268,7 +293,7 @@ class TutorAgent:
         builder.add_node("evaluate_answer", self.evaluate_answer)
         builder.add_node("final_answer", self.final_answer)
         builder.add_node("congratulate", self.congratulate)
-        builder.add_node("empty_node", self.empty_node)
+        builder.add_node("student_check", self.student_check)
         builder.add_node("socratic_tools", ToolNode(self.tools))
         builder.add_node("final_answer_tools", ToolNode(self.tools))
         builder.add_node("evaluate_answer_tools", ToolNode(self.tools))
@@ -304,13 +329,13 @@ class TutorAgent:
         )
         builder.add_edge("final_answer_tools", "final_answer")
         
-        builder.add_edge("congratulate", "empty_node")
-        builder.add_edge("empty_node", "memory_agent")
+        builder.add_edge("congratulate", "student_check")
+        builder.add_edge("student_check", "memory_agent")
 
         return builder.compile(
             checkpointer = self.checkpointer,
             store = self.across_thread_memory,
-            interrupt_after = ["socratic_node", "empty_node"]
+            interrupt_after = ["socratic_node", "student_check"]
         )
     
     def display_graph(self):
