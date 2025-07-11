@@ -3,6 +3,7 @@ import pathlib
 import asyncio
 
 from typing import List
+import functools
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
@@ -65,9 +66,10 @@ async def ingest_file(path: pathlib.Path) -> None:
 
     target = PERSIST_PATH / INDEX_NAME
     if target.exists():
-        vectordb = await asyncio.get_event_loop().run_in_executor(
-            None, FAISS.load_local,
-            str(target), embedder, True      # allow_dangerous_deserialization
+        vectordb = FAISS.load_local(
+            str(target),
+            embedder,
+            allow_dangerous_deserialization=True
         )
         vectordb.add_documents(docs)        # append
     else:

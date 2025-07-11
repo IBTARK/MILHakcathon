@@ -84,13 +84,10 @@ class TutorAgent:
         max_attempts = state["max_attempts"]
 
         if not is_solved and attempts < max_attempts:
-            print(f"Router: a socratic {state['attempts']}")
             return {"next": "socratic_node", "attempts": state["attempts"] + 1}
         elif not is_solved and attempts >= max_attempts:
-            print(f"Router: a final_anwer {state['attempts']}")
             return {"next": "final_answer", "attempts": state["attempts"] + 1}
         else:
-            print(f"Router: a congratulate {state["attempts"]}")
             return {"next": "congratulate", "attempts": state["attempts"] + 1}
 
     async def socratic_node(
@@ -102,7 +99,6 @@ class TutorAgent:
         user_id = config["configurable"]["user_id"]
         profile_txt = "\n".join(f"{memory.value}" for memory in self.across_thread_memory.search(("profile", user_id)))
 
-        print(f"Profile_socratic_node: {profile_txt}")
 
         query = state["query"]
         attempts = state["attempts"]
@@ -154,16 +150,12 @@ class TutorAgent:
         attempts = state["attempts"]
         socratic_interaction = state["messages"]
 
-        print("hola")
-
         # Format the socratic interaction
         socratic_interaction_txt = "\n".join(f"{msg.type}: {msg.content}" for msg in socratic_interaction if msg.type != "tool_call")
 
         system_message = SystemMessage(self.SYSTEM_PROMPT_FINAL_ANSWER.format(profile = profile_txt, initial_question = query, history = socratic_interaction_txt))
 
         response = await self.llm_with_tools.ainvoke([system_message])
-
-        print(response)
 
         return {"messages": [response], "attempts": 0, "next": "", "is_solved": False, "socratic_conversation": state["socratic_conversation"] + [response]}
     

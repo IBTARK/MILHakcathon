@@ -100,9 +100,6 @@ class MemoryAgent:
         trustcall_instruction = self.TRUSTCALL_INSTRUCTION.format(time = datetime.now().isoformat())
         updated_messages = list(merge_message_runs(messages = [SystemMessage(content = trustcall_instruction)] + state["messages"]))
 
-        for memory in self.across_thread_memory.search(("profile", user_id)):
-            print(memory.value)
-
         # Invoke the extractor
         result = self.extractor.invoke({"messages": updated_messages, 
                                          "existing": existing_memories})
@@ -114,9 +111,6 @@ class MemoryAgent:
                     r.model_dump(mode = "json"),
                 )
             
-        for memory in self.across_thread_memory.search(("profile", user_id)):
-            print(memory.value)
-        
         return {}
 
 

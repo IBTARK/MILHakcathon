@@ -35,15 +35,23 @@ class RAGRetrieveChunks(BaseTool):
         super().__init__()
 
         self._embeddings = OpenAIEmbeddings(model = EMBED_MODEL)
+
+    def _ensure_vectordb(self):
+        
+        if self._vectordb is not None:
+            return  # ya estaba cargado
+
         db_path = PERSIST_PATH / INDEX_NAME
         if not db_path.exists():
             raise RuntimeError(
-                f"No vector store found at {db_path}. Upload a document first."
+                f"No vector store found at {db_path}. "
+                "Sube un documento primero para construirlo."
             )
 
         self._vectordb = FAISS.load_local(
-            str(db_path), self._embeddings,
-            allow_dangerous_deserialization=True
+            str(db_path),
+            self._embeddings,
+            allow_dangerous_deserialization=True,
         )
 
     def _run(self, query: str) -> List[Dict]:
@@ -53,6 +61,7 @@ class RAGRetrieveChunks(BaseTool):
             This is automatically JSON-serialised when the tool call is passed
             back to the LLM.
         """
+        self._ensure_vectordb()
         docs: List[Document] = self._vectordb.similarity_search(query, k = TOP_K)
 
         result = [

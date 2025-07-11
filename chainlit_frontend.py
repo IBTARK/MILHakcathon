@@ -36,9 +36,7 @@ async def handle_message(message: cl.Message):
     if message.elements:
         for f in message.elements:
             temp_path = pathlib.Path(f.path)
-
-            print(f"vecorizing file: {temp_path}")
-
+            
             await ingest_file(temp_path)
             temp_path.unlink() 
 
