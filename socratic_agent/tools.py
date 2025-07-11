@@ -7,7 +7,6 @@ from pydantic import BaseModel, PrivateAttr
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from langchain_core.tools import BaseTool
 from langchain.schema import Document
 

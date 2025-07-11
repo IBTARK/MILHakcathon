@@ -46,14 +46,14 @@ class MemoryAgent:
         checkpointer: MemorySaver,
         across_thread_memory: InMemoryStore
     ):
-        self.checkpointer = checkpointer
-        self.across_thread_memory = across_thread_memory
-
         # Define the model to be used
         self.llm = ChatOpenAI(model = "gpt-4o-mini", api_key = os.getenv("OPENAI_API_KEY"), temperature = 0)
 
         # Define the model with structured output
         self.llm_user_profile = self.llm.with_structured_output(UserProfile)
+
+        self.checkpointer = checkpointer
+        self.across_thread_memory = across_thread_memory
 
         # Generate an extractor
         self.extractor = create_extractor(
@@ -69,11 +69,7 @@ class MemoryAgent:
         """Reflect on the chat history and update the memory collection"""
 
         user_id = config["configurable"]["user_id"]
-
-        print(f"User id: {user_id}")
-
-        print(f"store {store}")
-
+        
         # Define the namespace fot the memories
         namespace = ("profile", user_id)
 
@@ -124,6 +120,5 @@ class MemoryAgent:
         builder.add_edge("update_profile", END)
 
         return builder.compile(
-            checkpointer = self.checkpointer,
             store = self.across_thread_memory
         )

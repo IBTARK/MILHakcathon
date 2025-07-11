@@ -17,6 +17,7 @@ async def chat_start():
 
     cl.user_session.set("agent", agent)
     cl.user_session.set("thread", configuration)
+    cl.user_session.set("first_run", True)
 
     await cl.Message(
         content = "👋 ¡Hola! Soy tu tutor. ¿En qué puedo ayudarte?"
@@ -42,8 +43,15 @@ async def handle_message(message: cl.Message):
             temp_path.unlink() 
 
 
-
-    state = await agent.graph.ainvoke({"messages": [HumanMessage(user_msg)]}, configuration)
+    if cl.user_session.get("first_run"):
+        state = await agent.graph.ainvoke({"messages": [HumanMessage(user_msg)]}, configuration)
+        cl.user_session.set("first_run", False)
+    else:
+        agent.graph.update_state(
+            configuration,
+            {"messages": [HumanMessage(content = user_msg)]}
+        )
+        state = await agent.graph.ainvoke(None,  configuration)
 
     # Send the response back to the front-end
     await cl.Message(content = state["messages"][-1].content).send()
