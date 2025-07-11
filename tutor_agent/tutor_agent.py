@@ -12,11 +12,11 @@ from langgraph.store.base import BaseStore
 from langgraph.store.memory import InMemoryStore
 from langgraph.prebuilt import ToolNode
 
-from socratic_agent.socratic_agent import SocraticAgent
 from memory_agent.memory_agent import MemoryAgent
-from socratic_agent.tools import RAGRetrieveChunks
 import tutor_agent.tutot_agent_prompts as prompts
 from langgraph.prebuilt import tools_condition
+from langchain_openai import AzureChatOpenAI
+from tutor_agent.tools import RAGRetrieveChunks
 
 
 class TutorState(MessagesState):
@@ -39,8 +39,19 @@ class TutorAgent:
     def __init__(
         self
     ):
+        
+        endpoint = "https://hackaton-scv-openai.openai.azure.com/"
+        model_name = "gpt-4.1-mini"
+        deployment_name = "gpt-4.1-mini-team6"
+        
         # Define the model to be used
-        self.llm = ChatOpenAI(model = "gpt-4o-mini", api_key = os.getenv("OPENAI_API_KEY"))
+        self.llm = AzureChatOpenAI(
+            azure_endpoint = endpoint,
+            azure_deployment = deployment_name,
+            api_version = os.getenv("AZURE_API_VERSION"),
+            api_key = os.getenv("AZURE_API_KEY"),
+            model_name = model_name,
+        )
 
         # Define the tools
         self.tools = [RAGRetrieveChunks()]
@@ -54,9 +65,6 @@ class TutorAgent:
 
         # Define the memory agent
         self.memory_agent = MemoryAgent(self.checkpointer, self.across_thread_memory)
-
-        # Define the socratic agent
-        self.socratic_agent = SocraticAgent(self.llm, self.llm_with_tools, self.tools, self.checkpointer, self.across_thread_memory)
 
         self.graph = self.build_graph()
 

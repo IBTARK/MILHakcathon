@@ -14,6 +14,8 @@ from langgraph.store.base import BaseStore
 from langchain_core.messages import merge_message_runs, SystemMessage, HumanMessage
 from langgraph.store.memory import InMemoryStore
 from trustcall import create_extractor
+from langchain_openai import AzureChatOpenAI
+
 
 import memory_agent.memory_agent_prompts as prompts
 
@@ -47,7 +49,18 @@ class MemoryAgent:
         across_thread_memory: InMemoryStore
     ):
         # Define the model to be used
-        self.llm = ChatOpenAI(model = "gpt-4o-mini", api_key = os.getenv("OPENAI_API_KEY"), temperature = 0)
+        endpoint = "https://hackaton-scv-openai.openai.azure.com/"
+        model_name = "gpt-4.1-mini"
+        deployment_name = "gpt-4.1-mini-team6"
+        
+        # Define the model to be used
+        self.llm = AzureChatOpenAI(
+            azure_endpoint = endpoint,
+            azure_deployment = deployment_name,
+            api_version = os.getenv("AZURE_API_VERSION"),
+            api_key = os.getenv("AZURE_API_KEY"),
+            model_name = model_name,
+        )
 
         # Define the model with structured output
         self.llm_user_profile = self.llm.with_structured_output(UserProfile)

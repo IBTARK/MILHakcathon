@@ -9,3 +9,4 @@ chainlit
 trustcall==0.0.39
 pypdf==5.7.0
 faiss-cpu==1.11.0
+websockets          
