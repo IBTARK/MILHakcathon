@@ -92,6 +92,8 @@ class TutorAgent:
         user_id = config["configurable"]["user_id"]
         profile_txt = "\n".join(f"{memory.value}" for memory in self.across_thread_memory.search(("profile", user_id)))
 
+        print(f"Profile_socratic_node: {profile_txt}")
+
         query = state["query"]
         attempts = state["attempts"]
         socratic_interaction = state["messages"][-(attempts * 2):]
